@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fffaf4">
+  <meta name="description" content="Order your favorite comfort food, freshly made and delivered to your door.">
+  <title>FoodXpress — Good food, right on time</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#" aria-label="FoodXpress home"><span class="brand-icon">f</span>food<span>xpress</span><i>.</i></a>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a class="nav-link active" href="#menu">Menu</a>
+      <a class="nav-link" href="#how-it-works">How it works</a>
+      <a class="nav-link" href="#why-us">Why us</a>
+    </nav>
+    <a class="header-cart" href="#cart" aria-label="Your shopping bag">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-1 12H6L5 8Zm4 0V6a3 3 0 0 1 6 0v2"/></svg>
+      <span>Bag</span><b id="header-cart-count">0</b>
+    </a>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-heading">
+      <div class="hero-copy">
+        <div class="eyebrow"><span></span> GOOD FOOD. GOOD MOOD.</div>
+        <h1 id="hero-heading">Your next<br>great meal is <span>here.</span></h1>
+        <p>Cravings don't wait, and neither should you. Fresh favorites, made with love and delivered to your door.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#menu">Explore the menu <span aria-hidden="true">↗</span></a>
+          <div class="delivery-note"><span class="delivery-icon">⌁</span><span><strong>Fast delivery</strong><small>At your doorstep in 30 min</small></span></div>
+        </div>
+        <div class="hero-proof"><span class="proof-stars">★★★★★</span><strong>4.9</strong><span>from 2,000+ happy foodies</span></div>
+      </div>
+      <div class="hero-visual">
+        <div class="hero-halo"></div>
+        <img src="https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=1100&q=90" alt="Freshly baked pizza with basil and tomatoes">
+        <div class="floating-tag tag-rating"><span>★</span><strong>4.9</strong><small>top rated</small></div>
+        <div class="floating-tag tag-delivery"><span class="tag-scooter">↗</span><span><strong>30 min</strong><small>delivery time</small></span></div>
+        <span class="hero-sparkle sparkle-one">✳</span><span class="hero-sparkle sparkle-two">✦</span>
+      </div>
+      <div class="hero-bottom-note"><span>01</span> HANDMADE WITH HEART <i></i> ALWAYS FRESH</div>
+    </section>
+
+    <section class="menu-section section-wrap" id="menu">
+      <div class="section-heading">
+        <div><div class="eyebrow"><span></span> MADE FRESH, JUST FOR YOU</div><h2>Find your <em>favorite.</em></h2></div>
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+          <input id="search-input" type="search" placeholder="Search dishes..." autocomplete="off" aria-label="Search dishes">
+          <kbd>⌘ K</kbd>
+        </label>
+      </div>
+      <div class="menu-toolbar">
+        <div class="category-list" id="category-list" role="group" aria-label="Filter menu by category"></div>
+        <span class="results-count" id="results-count" aria-live="polite"></span>
+      </div>
+      <div class="menu-layout">
+        <div class="menu-grid" id="menu-grid" aria-live="polite"><div class="loading-state">Getting the good stuff ready<span>...</span></div></div>
+        <aside class="cart-card" id="cart" aria-label="Your order">
+          <div class="cart-heading"><div><div class="eyebrow"><span></span> YOUR ORDER</div><h3>Your bag <span id="cart-item-label">(0)</span></h3></div><span class="cart-bag-icon">↗</span></div>
+          <div class="cart-items" id="cart-items"><div class="empty-cart"><span class="empty-cart-icon">♡</span><strong>Your bag is taking a break.</strong><span>Add something delicious to get started.</span></div></div>
+          <div class="cart-summary" id="cart-summary" hidden>
+            <div><span>Subtotal</span><strong id="cart-subtotal">₹0</strong></div>
+            <div><span>Delivery</span><strong class="free-delivery">FREE</strong></div>
+            <div class="cart-total"><span>Total</span><strong id="cart-total">₹0</strong></div>
+          </div>
+          <button class="button button-primary checkout-button" id="checkout-button" type="button" disabled>Continue to checkout <span aria-hidden="true">→</span></button>
+          <p class="secure-note">⌑ &nbsp; No extra fees. Just good food.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="steps-section" id="how-it-works">
+      <div class="section-wrap steps-inner">
+        <div class="steps-intro"><div class="eyebrow"><span></span> EASY AS ONE, TWO, EAT</div><h2>Good food.<br><em>Zero fuss.</em></h2><p>From first craving to first bite, we've made the whole thing a piece of cake.</p></div>
+        <div class="step-card"><span class="step-number">01</span><span class="step-icon">⌕</span><h3>Pick your favorites</h3><p>Explore a menu full of fresh-made, feel-good food.</p></div>
+        <div class="step-card"><span class="step-number">02</span><span class="step-icon">♧</span><h3>We get cooking</h3><p>Our kitchen gets to work on your order right away.</p></div>
+        <div class="step-card"><span class="step-number">03</span><span class="step-icon">↗</span><h3>Delivered with love</h3><p>Fresh, hot and happy — right to your doorstep.</p></div>
+      </div>
+    </section>
+
+    <section class="why-section section-wrap" id="why-us">
+      <div class="why-stamp"><span>MADE<br>WITH<br>LOVE</span><b>✳</b></div>
+      <div><div class="eyebrow"><span></span> THE FOODXPRESS DIFFERENCE</div><h2>Real food.<br><em>Real good.</em></h2></div>
+      <p>Good ingredients make great food. That's why we source fresh, cook from scratch, and never cut corners. Every. Single. Time.</p>
+      <div class="why-stats"><div><strong>30<span>min</span></strong><small>average delivery</small></div><div><strong>100<span>%</span></strong><small>freshly prepared</small></div><div><strong>4.9<span>★</span></strong><small>foodie rating</small></div></div>
+    </section>
+  </main>
+
+  <footer class="site-footer"><a class="brand footer-brand" href="#"><span class="brand-icon">f</span>food<span>xpress</span><i>.</i></a><span>Made with a little extra love. © 2026 FoodXpress</span><a href="#menu">Back to the good stuff ↑</a></footer>
+
+  <dialog class="checkout-dialog" id="checkout-dialog" aria-labelledby="checkout-title">
+    <form class="checkout-form" id="checkout-form">
+      <button class="dialog-close" type="button" id="dialog-close" aria-label="Close checkout">×</button>
+      <div class="eyebrow"><span></span> ALMOST THERE</div>
+      <h2 id="checkout-title">Where should we<br><em>bring the good stuff?</em></h2>
+      <label for="customer-name">Your name</label>
+      <input id="customer-name" name="customerName" type="text" required minlength="2" maxlength="120" autocomplete="name" placeholder="e.g. Alex Morgan">
+      <label for="customer-phone">Phone number</label>
+      <input id="customer-phone" name="phone" type="tel" required minlength="7" maxlength="30" autocomplete="tel" placeholder="e.g. +91 98765 43210">
+      <label for="customer-address">Delivery address</label>
+      <textarea id="customer-address" name="address" required minlength="8" maxlength="500" autocomplete="street-address" rows="3" placeholder="House, street, area, city..."></textarea>
+      <div class="checkout-total"><span>Order total</span><strong id="checkout-total">₹0</strong></div>
+      <p class="form-error" id="form-error" role="alert" hidden></p>
+      <button class="button button-primary place-order-button" id="place-order-button" type="submit">Place my order <span aria-hidden="true">→</span></button>
+    </form>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
