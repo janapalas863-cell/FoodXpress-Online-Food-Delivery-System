@@ -2,6 +2,10 @@
 
 A responsive food ordering app with an HTML/CSS/JavaScript frontend, an Express REST API, and a MySQL database.
 
+## Screenshot
+
+![FoodXpress homepage](./public/foodxpress-screenshot.png)
+
 ## Features
 
 - Browse the restaurant menu, search dishes, and filter by category.
