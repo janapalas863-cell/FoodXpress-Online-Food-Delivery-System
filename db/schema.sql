@@ -57,7 +57,7 @@ FROM (
   UNION ALL SELECT 'Creamy Alfredo Pasta', 'Silky parmesan cream sauce, fettuccine and a touch of cracked pepper.', 'Pasta', 329.00, 'https://images.unsplash.com/photo-1645112411341-6c4fd023714a?auto=format&fit=crop&w=900&q=85', 4.7, '20-25 min'
   UNION ALL SELECT 'Spicy Arrabbiata', 'Penne tossed in slow-cooked tomato, garlic and a lively chilli kick.', 'Pasta', 299.00, 'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=900&q=85', 4.6, '20-25 min'
   UNION ALL SELECT 'Crispy Golden Fries', 'Golden-cut potatoes, crisp on the outside and fluffy in the middle.', 'Sides', 129.00, 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?auto=format&fit=crop&w=900&q=85', 4.7, '10-15 min'
-  UNION ALL SELECT 'Chocolate Lava Cake', 'Warm chocolate cake with a molten centre. Best enjoyed right away.', 'Desserts', 179.00, 'https://images.unsplash.com/photo-1624353365286-3f8d62a9f4e8?auto=format&fit=crop&w=900&q=85', 4.9, '15-20 min'
-  UNION ALL SELECT 'Fresh Lemon Cooler', 'Freshly squeezed lemon, sparkling water and a hint of mint.', 'Drinks', 99.00, 'https://images.unsplash.com/photo-1513558161293-cdaf765edfd7?auto=format&fit=crop&w=900&q=85', 4.6, '5-10 min'
+  UNION ALL SELECT 'Chocolate Lava Cake', 'Warm chocolate cake with a molten centre. Best enjoyed right away.', 'Desserts', 179.00, 'https://images.unsplash.com/photo-1551024601-bec78aea704b?auto=format&fit=crop&w=900&q=85', 4.9, '15-20 min'
+  UNION ALL SELECT 'Fresh Lemon Cooler', 'Freshly squeezed lemon, sparkling water and a hint of mint.', 'Drinks', 99.00, 'https://images.unsplash.com/photo-1546173159-315724a31696?auto=format&fit=crop&w=900&q=85', 4.6, '5-10 min'
 ) AS seed
 WHERE NOT EXISTS (SELECT 1 FROM menu_items LIMIT 1);

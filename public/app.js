@@ -67,6 +67,15 @@ async function loadMenu() {
   }
 }
 
+function buildMenuImage(item) {
+  const safeUrl = typeof item.imageUrl === 'string' && item.imageUrl.trim() ? item.imageUrl.trim() : '';
+  if (!safeUrl) {
+    return window.buildFallbackImageDataUri ? window.buildFallbackImageDataUri(item.name, '#f4d3bf') : '';
+  }
+
+  return safeUrl;
+}
+
 function renderMenu() {
   document.querySelector('#results-count').textContent = `${menuItems.length} ${menuItems.length === 1 ? 'dish' : 'dishes'}`;
   if (menuItems.length === 0) {
@@ -74,22 +83,25 @@ function renderMenu() {
     return;
   }
 
-  menuGrid.innerHTML = menuItems.map((item) => `
-    <article class="food-card">
-      <div class="food-image-wrap">
-        <img class="food-image" src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.name)}" loading="lazy">
-        <span class="food-category">${escapeHtml(item.category)}</span>
-        <span class="food-rating"><span>★</span>${Number(item.rating).toFixed(1)}</span>
-      </div>
-      <div class="food-card-body">
-        <div class="food-name-row"><h3 class="food-name">${escapeHtml(item.name)}</h3><span class="food-price">${currency.format(item.price)}</span></div>
-        <p class="food-description">${escapeHtml(item.description)}</p>
-        <div class="food-card-bottom"><span class="prep-time">◷ &nbsp;${escapeHtml(item.prepTime)}</span>
-          <button class="add-button" type="button" data-add="${item.id}" aria-label="Add ${escapeHtml(item.name)} to your bag"><span>+</span> Add</button>
+  menuGrid.innerHTML = menuItems.map((item) => {
+    const imageUrl = buildMenuImage(item);
+    return `
+      <article class="food-card">
+        <div class="food-image-wrap">
+          <img class="food-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(item.name)}" loading="lazy" onerror="this.onerror=null;this.src=window.buildFallbackImageDataUri ? window.buildFallbackImageDataUri('${escapeHtml(item.name).replace(/'/g, "\\'")}', '#f4d3bf') : this.src='';">
+          <span class="food-category">${escapeHtml(item.category)}</span>
+          <span class="food-rating"><span>★</span>${Number(item.rating).toFixed(1)}</span>
         </div>
-      </div>
-    </article>
-  `).join('');
+        <div class="food-card-body">
+          <div class="food-name-row"><h3 class="food-name">${escapeHtml(item.name)}</h3><span class="food-price">${currency.format(item.price)}</span></div>
+          <p class="food-description">${escapeHtml(item.description)}</p>
+          <div class="food-card-bottom"><span class="prep-time">◷ &nbsp;${escapeHtml(item.prepTime)}</span>
+            <button class="add-button" type="button" data-add="${item.id}" aria-label="Add ${escapeHtml(item.name)} to your bag"><span>+</span> Add</button>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
 }
 
 function renderCart() {
