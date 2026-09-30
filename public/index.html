@@ -108,11 +108,18 @@
       <input id="customer-phone" name="phone" type="tel" required minlength="7" maxlength="30" autocomplete="tel" placeholder="e.g. +91 98765 43210">
       <label for="customer-address">Delivery address</label>
       <textarea id="customer-address" name="address" required minlength="8" maxlength="500" autocomplete="street-address" rows="3" placeholder="House, street, area, city..."></textarea>
+      <fieldset class="payment-methods">
+        <legend>Payment method</legend>
+        <label><input name="paymentGateway" type="radio" value="razorpay" checked> Razorpay</label>
+        <label><input name="paymentGateway" type="radio" value="stripe"> Stripe</label>
+        <p class="payment-method-message" id="payment-method-message" role="status">Checking payment options...</p>
+      </fieldset>
       <div class="checkout-total"><span>Order total</span><strong id="checkout-total">₹0</strong></div>
       <p class="form-error" id="form-error" role="alert" hidden></p>
       <button class="button button-primary place-order-button" id="place-order-button" type="submit">Place my order <span aria-hidden="true">→</span></button>
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </body>
 </html>

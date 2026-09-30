@@ -16,10 +16,12 @@ const checkoutForm = document.querySelector('#checkout-form');
 const placeOrderButton = document.querySelector('#place-order-button');
 const formError = document.querySelector('#form-error');
 const toast = document.querySelector('#toast');
+const paymentMethodMessage = document.querySelector('#payment-method-message');
 
 let menuItems = [];
 let selectedCategory = 'All';
 let cart = new Map();
+let paymentMethodsReady = false;
 let searchTimer;
 let toastTimer;
 
@@ -203,6 +205,11 @@ checkoutDialog.addEventListener('click', (event) => {
 checkoutForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (cart.size === 0) return;
+  if (!paymentMethodsReady) {
+    formError.textContent = 'Online payments are not configured. Add provider test keys to the server .env file and restart the app.';
+    formError.hidden = false;
+    return;
+  }
   formError.hidden = true;
   placeOrderButton.disabled = true;
   placeOrderButton.innerHTML = 'Placing your order...';
@@ -216,25 +223,156 @@ checkoutForm.addEventListener('submit', async (event) => {
         customerName: formData.get('customerName'),
         phone: formData.get('phone'),
         address: formData.get('address'),
+        paymentGateway: formData.get('paymentGateway'),
         items: [...cart.values()].map(({ item, quantity }) => ({ menuItemId: item.id, quantity }))
       })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Your order could not be placed.');
-    cart.clear();
-    renderCart();
-    checkoutForm.reset();
-    checkoutDialog.close();
-    showToast(`Order #${data.order.id} is in! We'll get cooking.`);
+
+    if (data.payment.gateway === 'stripe') {
+      if (!data.payment.url) throw new Error('Stripe did not return a secure checkout link. Please try again.');
+      placeOrderButton.textContent = 'Redirecting to secure checkout...';
+      window.location.assign(data.payment.url);
+      return;
+    }
+    if (!window.Razorpay) throw new Error('Secure checkout did not load. Refresh the page and try again.');
+    const checkout = new window.Razorpay({
+      key: data.payment.keyId,
+      amount: data.payment.amount,
+      currency: data.payment.currency,
+      name: 'FoodXpress',
+      description: `Order #${data.order.id}`,
+      order_id: data.payment.orderId,
+      prefill: {
+        name: formData.get('customerName'),
+        contact: formData.get('phone')
+      },
+      theme: { color: '#e85d32' },
+      handler: async (paymentDetails) => {
+        placeOrderButton.disabled = true;
+        placeOrderButton.textContent = 'Verifying payment...';
+        try {
+          const verifyResponse = await fetch('/api/payments/razorpay/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: data.order.id, ...paymentDetails })
+          });
+          const verifyData = await verifyResponse.json();
+          if (!verifyResponse.ok) throw new Error(verifyData.error || 'Payment could not be verified.');
+          cart.clear();
+          renderCart();
+          checkoutForm.reset();
+          checkoutDialog.close();
+          showToast(`Payment received. Order #${verifyData.orderId} is confirmed.`);
+        } catch (error) {
+          formError.textContent = error.message;
+          formError.hidden = false;
+        } finally {
+          placeOrderButton.disabled = false;
+          placeOrderButton.innerHTML = 'Pay securely <span aria-hidden="true">→</span>';
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          placeOrderButton.disabled = false;
+          placeOrderButton.innerHTML = 'Pay securely <span aria-hidden="true">→</span>';
+        }
+      }
+    });
+    checkout.on('payment.failed', async (paymentError) => {
+      const details = paymentError.error || {};
+      const failure = details.metadata?.payment_id
+        ? fetch('/api/payments/razorpay/fail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: data.order.id, razorpay_payment_id: details.metadata.payment_id })
+        }).then(async (response) => {
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'The failed payment could not be recorded.');
+        })
+        : Promise.resolve();
+      try {
+        await failure;
+        formError.textContent = details.description || 'Payment failed. Please try again.';
+      } catch (error) {
+        formError.textContent = error.message;
+      }
+      formError.hidden = false;
+      placeOrderButton.disabled = false;
+      placeOrderButton.innerHTML = 'Pay securely <span aria-hidden="true">→</span>';
+    });
+    placeOrderButton.innerHTML = 'Complete payment in the secure window';
+    checkout.open();
   } catch (error) {
     formError.textContent = error.message;
     formError.hidden = false;
   } finally {
-    placeOrderButton.disabled = false;
-    placeOrderButton.innerHTML = 'Place my order <span aria-hidden="true">→</span>';
+    if (placeOrderButton.textContent.includes('Placing')) {
+      placeOrderButton.disabled = false;
+      placeOrderButton.innerHTML = 'Place my order <span aria-hidden="true">→</span>';
+    }
   }
 });
+
+async function handleStripeReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const paymentResult = params.get('payment');
+  if (paymentResult !== 'success' && paymentResult !== 'cancelled') return;
+  const sessionId = params.get('session_id');
+  const cancelToken = params.get('cancel_token');
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`);
+
+  try {
+    const response = paymentResult === 'success' && sessionId
+      ? await fetch(`/api/payments/stripe/sessions/${encodeURIComponent(sessionId)}`)
+      : await fetch('/api/payments/stripe/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cancelToken })
+      });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'We could not confirm your payment status.');
+    if (data.paymentStatus === 'paid') {
+      showToast(`Payment received. Order #${data.orderId} is confirmed.`);
+    } else if (data.paymentStatus === 'failed') {
+      showToast(`Payment was not completed. Order #${data.orderId} was cancelled.`);
+    } else {
+      showToast(`Payment for order #${data.orderId} is still processing.`);
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function loadPaymentMethods() {
+  placeOrderButton.disabled = true;
+  try {
+    const response = await fetch('/api/payment-methods');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Payment options could not be loaded.');
+
+    const inputs = [...checkoutForm.querySelectorAll('input[name="paymentGateway"]')];
+    for (const input of inputs) {
+      input.disabled = !data[input.value];
+      input.closest('label').classList.toggle('unavailable', input.disabled);
+    }
+    const availableInput = inputs.find((input) => !input.disabled);
+    if (availableInput) {
+      paymentMethodsReady = true;
+      availableInput.checked = true;
+      paymentMethodMessage.textContent = 'Choose a secure payment method to continue.';
+      placeOrderButton.disabled = false;
+    } else {
+      paymentMethodMessage.textContent = 'Online payments are not configured. Add Razorpay or Stripe test keys to .env and restart the server.';
+    }
+  } catch (error) {
+    paymentMethodMessage.textContent = error.message;
+  }
+}
 
 renderCategories();
 renderCart();
 loadMenu();
+handleStripeReturn();
+loadPaymentMethods();

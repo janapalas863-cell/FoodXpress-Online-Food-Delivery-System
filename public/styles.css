@@ -173,6 +173,12 @@ h1, h2, h3, p { margin-top: 0; }
 .checkout-form > input, .checkout-form > textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 4px; outline: 0; background: white; font-size: 12px; }
 .checkout-form > input:focus, .checkout-form > textarea:focus { border-color: #eaa187; box-shadow: 0 0 0 3px #ed6c3b17; }
 .checkout-form > textarea { resize: vertical; }
+.payment-methods { display: grid; grid-template-columns: max-content max-content; column-gap: 18px; margin: 16px 0 0; padding: 0; border: 0; }
+.payment-methods legend { grid-column: 1 / -1; margin-bottom: 8px; font-size: 10px; font-weight: 700; }
+.payment-methods label { display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; }
+.payment-methods input { accent-color: var(--orange); }
+.payment-methods label.unavailable { color: #8d877e; cursor: not-allowed; }
+.payment-method-message { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .checkout-total { display: flex; justify-content: space-between; margin-top: 19px; padding: 13px 0; border-top: 1px solid var(--line); font-size: 12px; font-weight: 700; }
 .checkout-total strong { color: var(--orange-dark); font-size: 15px; }
 .place-order-button { width: 100%; justify-content: space-between; }

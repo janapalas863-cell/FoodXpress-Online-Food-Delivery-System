@@ -2,10 +2,14 @@ require('dotenv').config();
 
 const express = require('express');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const mysql = require('mysql2/promise');
+const Razorpay = require('razorpay');
+const Stripe = require('stripe');
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
+const appUrl = (process.env.APP_URL || `http://localhost:${port}`).replace(/\/+$/, '');
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: Number(process.env.DB_PORT) || 3306,
@@ -15,6 +19,81 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   decimalNumbers: true
+});
+const razorpay = process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+  ? new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET })
+  : null;
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+async function updateStripeOrder(session, outcome) {
+  const [orders] = await pool.execute(
+    "SELECT id, total, payment_status AS paymentStatus FROM orders WHERE stripe_session_id = ? AND payment_provider = 'stripe'",
+    [session.id]
+  );
+  const order = orders[0];
+  if (!order || session.metadata?.orderId !== String(order.id)) {
+    return null;
+  }
+
+  const expectedAmount = Math.round(Number(order.total) * 100);
+  if (session.mode !== 'payment' || session.currency !== 'inr' || session.amount_total !== expectedAmount) {
+    throw new Error('Stripe payment details do not match the order.');
+  }
+
+  if (outcome === 'paid') {
+    if (session.payment_status !== 'paid') {
+      return { id: order.id, paymentStatus: order.paymentStatus };
+    }
+    const paymentIntentId = typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id || null;
+    const [result] = await pool.execute(
+      "UPDATE orders SET payment_status = 'paid', stripe_payment_intent_id = ?, stripe_cancel_token_hash = NULL, status = 'confirmed' WHERE id = ? AND payment_status = 'pending'",
+      [paymentIntentId, order.id]
+    );
+    if (result.affectedRows === 1 || order.paymentStatus === 'paid') {
+      return { id: order.id, paymentStatus: 'paid' };
+    }
+    const [currentOrders] = await pool.execute('SELECT payment_status AS paymentStatus FROM orders WHERE id = ?', [order.id]);
+    return { id: order.id, paymentStatus: currentOrders[0]?.paymentStatus || order.paymentStatus };
+  }
+
+  if (session.payment_status === 'paid') {
+    return { id: order.id, paymentStatus: order.paymentStatus };
+  }
+  await pool.execute(
+    "UPDATE orders SET payment_status = 'failed', stripe_cancel_token_hash = NULL, status = 'cancelled' WHERE id = ? AND payment_status = 'pending'",
+    [order.id]
+  );
+  const [currentOrders] = await pool.execute('SELECT payment_status AS paymentStatus FROM orders WHERE id = ?', [order.id]);
+  return { id: order.id, paymentStatus: currentOrders[0]?.paymentStatus || order.paymentStatus };
+}
+
+app.post('/api/payments/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+    return res.status(503).json({ error: 'Stripe webhooks are not configured.' });
+  }
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (error) {
+    console.error('Stripe webhook signature verification failed:', error.message);
+    return res.status(400).json({ error: 'Stripe webhook signature could not be verified.' });
+  }
+
+  try {
+    const session = event.data.object;
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+      await updateStripeOrder(session, 'paid');
+    } else if (event.type === 'checkout.session.expired' || event.type === 'checkout.session.async_payment_failed') {
+      await updateStripeOrder(session, 'failed');
+    }
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Stripe webhook processing failed:', error);
+    res.status(500).json({ error: 'Stripe webhook could not be processed.' });
+  }
 });
 
 app.use(express.json({ limit: '20kb' }));
@@ -27,6 +106,13 @@ app.get('/api/health', async (_req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.get('/api/payment-methods', (_req, res) => {
+  res.json({
+    razorpay: Boolean(razorpay),
+    stripe: Boolean(stripe && process.env.STRIPE_WEBHOOK_SECRET)
+  });
 });
 
 app.get('/api/menu', async (req, res, next) => {
@@ -59,7 +145,7 @@ app.get('/api/menu', async (req, res, next) => {
 });
 
 app.post('/api/orders', async (req, res, next) => {
-  const { customerName, phone, address, items } = req.body || {};
+  const { customerName, phone, address, items, paymentGateway = 'razorpay' } = req.body || {};
   const name = typeof customerName === 'string' ? customerName.trim() : '';
   const customerPhone = typeof phone === 'string' ? phone.trim() : '';
   const deliveryAddress = typeof address === 'string' ? address.trim() : '';
@@ -76,6 +162,15 @@ app.post('/api/orders', async (req, res, next) => {
   if (!Array.isArray(items) || items.length < 1 || items.length > 50) {
     return res.status(400).json({ error: 'Your order must contain between 1 and 50 different items.' });
   }
+  if (paymentGateway !== 'razorpay' && paymentGateway !== 'stripe') {
+    return res.status(400).json({ error: 'Choose a supported payment method.' });
+  }
+  if (paymentGateway === 'razorpay' && !razorpay) {
+    return res.status(503).json({ error: 'Razorpay payments are not configured yet.' });
+  }
+  if (paymentGateway === 'stripe' && (!stripe || !process.env.STRIPE_WEBHOOK_SECRET)) {
+    return res.status(503).json({ error: 'Stripe payments and webhooks are not configured yet.' });
+  }
 
   const quantities = new Map();
   for (const item of items) {
@@ -91,6 +186,7 @@ app.post('/api/orders', async (req, res, next) => {
   }
 
   let connection;
+  let order;
   try {
     connection = await pool.getConnection();
     await connection.beginTransaction();
@@ -112,7 +208,8 @@ app.post('/api/orders', async (req, res, next) => {
       price: Number(item.price),
       quantity: quantities.get(item.id)
     }));
-    const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const totalPaise = orderItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0);
+    const total = totalPaise / 100;
 
     const [orderResult] = await connection.execute(
       'INSERT INTO orders (customer_name, phone, address, total) VALUES (?, ?, ?, ?)',
@@ -127,24 +224,233 @@ app.post('/api/orders', async (req, res, next) => {
     }
 
     await connection.commit();
-    res.status(201).json({
-      order: {
-        id: orderResult.insertId,
-        customerName: name,
-        total,
-        status: 'pending',
-        items: orderItems
-      }
-    });
+    order = { id: orderResult.insertId, customerName: name, total, totalPaise, items: orderItems };
   } catch (error) {
     if (connection) {
       await connection.rollback();
     }
-    next(error);
+    return next(error);
   } finally {
     if (connection) {
       connection.release();
     }
+  }
+
+  try {
+    let payment;
+    if (paymentGateway === 'razorpay') {
+      const paymentOrder = await razorpay.orders.create({
+        amount: order.totalPaise,
+        currency: 'INR',
+        receipt: `foodxpress_${order.id}`
+      });
+      await pool.execute(
+        "UPDATE orders SET payment_provider = 'razorpay', razorpay_order_id = ? WHERE id = ?",
+        [paymentOrder.id, order.id]
+      );
+      payment = {
+        gateway: 'razorpay',
+        keyId: process.env.RAZORPAY_KEY_ID,
+        orderId: paymentOrder.id,
+        amount: paymentOrder.amount,
+        currency: paymentOrder.currency
+      };
+    } else {
+      const cancelToken = crypto.randomBytes(32).toString('hex');
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        client_reference_id: String(order.id),
+        metadata: { orderId: String(order.id) },
+        line_items: order.items.map((item) => ({
+          price_data: {
+            currency: 'inr',
+            product_data: { name: item.name },
+            unit_amount: Math.round(item.price * 100)
+          },
+          quantity: item.quantity
+        })),
+        success_url: `${appUrl}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appUrl}/?payment=cancelled&cancel_token=${cancelToken}`
+      });
+      await pool.execute(
+        "UPDATE orders SET payment_provider = 'stripe', stripe_session_id = ?, stripe_cancel_token_hash = ? WHERE id = ?",
+        [session.id, crypto.createHash('sha256').update(cancelToken).digest('hex'), order.id]
+      );
+      payment = { gateway: 'stripe', url: session.url };
+    }
+    res.status(201).json({
+      order: {
+        id: order.id,
+        customerName: order.customerName,
+        total: order.total,
+        status: 'pending',
+        paymentStatus: 'pending',
+        items: order.items
+      },
+      payment
+    });
+  } catch (error) {
+    await pool.execute(
+      "UPDATE orders SET payment_status = 'failed', status = 'cancelled' WHERE id = ? AND payment_status = 'pending'",
+      [order.id]
+    );
+    console.error(`${paymentGateway} checkout creation failed:`, error);
+    res.status(502).json({ error: 'Secure checkout could not be started. Please try again.' });
+  }
+});
+
+app.post('/api/payments/razorpay/verify', async (req, res, next) => {
+  const { orderId, razorpay_order_id: gatewayOrderId, razorpay_payment_id: paymentId, razorpay_signature: signature } = req.body || {};
+  const id = Number(orderId);
+  if (!Number.isSafeInteger(id) || id < 1 || typeof gatewayOrderId !== 'string' || typeof paymentId !== 'string' || typeof signature !== 'string') {
+    return res.status(400).json({ error: 'Payment verification details are invalid.' });
+  }
+  if (!razorpay) {
+    return res.status(503).json({ error: 'Online payments are not configured yet.' });
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+    .update(`${gatewayOrderId}|${paymentId}`)
+    .digest('hex');
+  const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+  const receivedBuffer = /^[a-f\d]{64}$/i.test(signature) ? Buffer.from(signature, 'hex') : Buffer.alloc(0);
+  if (receivedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, receivedBuffer)) {
+    return res.status(400).json({ error: 'Payment signature could not be verified.' });
+  }
+
+  try {
+    const [orders] = await pool.execute(
+      'SELECT id, total, payment_status AS paymentStatus, razorpay_order_id AS razorpayOrderId, razorpay_payment_id AS razorpayPaymentId FROM orders WHERE id = ?',
+      [id]
+    );
+    const order = orders[0];
+    if (!order || order.razorpayOrderId !== gatewayOrderId) {
+      return res.status(404).json({ error: 'The payment does not match an order.' });
+    }
+
+    const payment = await razorpay.payments.fetch(paymentId);
+    const expectedAmount = Math.round(Number(order.total) * 100);
+    if (payment.order_id !== gatewayOrderId || payment.amount !== expectedAmount || payment.currency !== 'INR') {
+      return res.status(400).json({ error: 'Payment details do not match this order.' });
+    }
+    if (payment.status !== 'captured') {
+      return res.status(409).json({ error: 'Payment has not been captured yet. Please try again shortly.' });
+    }
+
+    if (order.paymentStatus === 'paid') {
+      if (order.razorpayPaymentId !== paymentId) {
+        return res.status(409).json({ error: 'This order has already been paid with a different payment.' });
+      }
+      return res.json({ success: true, orderId: id, status: 'confirmed' });
+    }
+
+    const [updateResult] = await pool.execute(
+      "UPDATE orders SET payment_status = 'paid', razorpay_payment_id = ?, status = 'confirmed' WHERE id = ? AND razorpay_order_id = ? AND payment_status IN ('pending', 'failed')",
+      [paymentId, id, gatewayOrderId]
+    );
+    if (updateResult.affectedRows !== 1) {
+      return res.status(409).json({ error: 'This order could not be confirmed. Please contact support.' });
+    }
+    res.json({ success: true, orderId: id, status: 'confirmed' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/payments/razorpay/fail', async (req, res, next) => {
+  const { orderId, razorpay_payment_id: paymentId } = req.body || {};
+  const id = Number(orderId);
+  if (!Number.isSafeInteger(id) || id < 1 || typeof paymentId !== 'string' || !paymentId) {
+    return res.status(400).json({ error: 'Payment failure details are invalid.' });
+  }
+  if (!razorpay) {
+    return res.status(503).json({ error: 'Razorpay payments are not configured yet.' });
+  }
+
+  try {
+    const [orders] = await pool.execute(
+      "SELECT total, payment_status AS paymentStatus, razorpay_order_id AS razorpayOrderId FROM orders WHERE id = ? AND payment_provider = 'razorpay'",
+      [id]
+    );
+    const order = orders[0];
+    if (!order) {
+      return res.status(404).json({ error: 'The payment does not match an order.' });
+    }
+    const payment = await razorpay.payments.fetch(paymentId);
+    if (
+      payment.order_id !== order.razorpayOrderId
+      || payment.amount !== Math.round(Number(order.total) * 100)
+      || payment.currency !== 'INR'
+      || payment.status !== 'failed'
+    ) {
+      return res.status(400).json({ error: 'Payment failure could not be verified.' });
+    }
+    if (order.paymentStatus === 'paid') {
+      return res.status(409).json({ error: 'This order has already been paid.' });
+    }
+    await pool.execute(
+      "UPDATE orders SET payment_status = 'failed', status = 'cancelled' WHERE id = ? AND payment_status = 'pending'",
+      [id]
+    );
+    res.json({ success: true, orderId: id, status: 'cancelled', paymentStatus: 'failed' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/payments/stripe/sessions/:sessionId', async (req, res, next) => {
+  if (!stripe) {
+    return res.status(503).json({ error: 'Stripe payments are not configured yet.' });
+  }
+  try {
+    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
+    const result = await updateStripeOrder(session, session.status === 'expired' ? 'failed' : 'paid');
+    if (!result) {
+      return res.status(404).json({ error: 'The payment does not match an order.' });
+    }
+    res.json({
+      success: result.paymentStatus === 'paid',
+      orderId: result.id,
+      status: result.paymentStatus === 'paid' ? 'confirmed' : result.paymentStatus === 'failed' ? 'cancelled' : 'pending',
+      paymentStatus: result.paymentStatus
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/payments/stripe/cancel', async (req, res, next) => {
+  const cancelToken = req.body?.cancelToken;
+  if (typeof cancelToken !== 'string' || !/^[a-f\d]{64}$/i.test(cancelToken)) {
+    return res.status(400).json({ error: 'Payment cancellation details are invalid.' });
+  }
+  if (!stripe) {
+    return res.status(503).json({ error: 'Stripe payments are not configured yet.' });
+  }
+  try {
+    const [orders] = await pool.execute(
+      "SELECT id, stripe_session_id AS sessionId FROM orders WHERE stripe_cancel_token_hash = ? AND payment_provider = 'stripe'",
+      [crypto.createHash('sha256').update(cancelToken).digest('hex')]
+    );
+    if (!orders[0]?.sessionId) {
+      return res.status(404).json({ error: 'The payment does not match an order.' });
+    }
+    let session = await stripe.checkout.sessions.retrieve(orders[0].sessionId);
+    if (session.status === 'open') {
+      session = await stripe.checkout.sessions.expire(session.id);
+    }
+    const result = await updateStripeOrder(session, session.status === 'expired' ? 'failed' : 'paid');
+    if (!result) {
+      return res.status(404).json({ error: 'The payment does not match an order.' });
+    }
+    res.json({
+      orderId: result.id,
+      status: result.paymentStatus === 'paid' ? 'confirmed' : result.paymentStatus === 'failed' ? 'cancelled' : 'pending',
+      paymentStatus: result.paymentStatus
+    });
+  } catch (error) {
+    next(error);
   }
 });
 
@@ -156,7 +462,7 @@ app.get('/api/orders/:id', async (req, res, next) => {
 
   try {
     const [orders] = await pool.execute(
-      'SELECT id, customer_name AS customerName, total, status, created_at AS createdAt FROM orders WHERE id = ?',
+      'SELECT id, customer_name AS customerName, total, status, payment_status AS paymentStatus, payment_provider AS paymentProvider, created_at AS createdAt FROM orders WHERE id = ?',
       [id]
     );
     if (orders.length === 0) {

@@ -27,6 +27,13 @@ CREATE TABLE IF NOT EXISTS orders (
   total DECIMAL(10, 2) UNSIGNED NOT NULL,
   status ENUM('pending', 'confirmed', 'preparing', 'out_for_delivery', 'delivered', 'cancelled')
     NOT NULL DEFAULT 'pending',
+  payment_status ENUM('pending', 'paid', 'failed') NOT NULL DEFAULT 'pending',
+  payment_provider ENUM('razorpay', 'stripe') NOT NULL DEFAULT 'razorpay',
+  razorpay_order_id VARCHAR(50) NULL,
+  razorpay_payment_id VARCHAR(50) NULL,
+  stripe_session_id VARCHAR(255) NULL,
+  stripe_payment_intent_id VARCHAR(255) NULL,
+  stripe_cancel_token_hash CHAR(64) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   INDEX idx_orders_created_at (created_at)
