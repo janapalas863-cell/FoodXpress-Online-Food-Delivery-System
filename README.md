@@ -9,7 +9,7 @@ A responsive food ordering app with an HTML/CSS/JavaScript frontend, an Express 
 ## Live Demo
 
 [[▶ Play the FoodXpress demo]
-(./public/%F0%9F%9A%80%20Live%20Demo%20%E2%80%94%20FoodXpress.mp4)](https://drive.google.com/file/d/1Z5JsTpLjhGVE_xunz-h46YNTgoqkMiLc/view?usp=drive_link)
+(./public/%F0%9F%9A%80%20Live%20Demo%20%E2%80%94%20FoodXpress.mp4)](https://drive.google.com/file/d/1hy0IjL0Yzyr-_RYlJzdp7jgTwxWwMt2I/view?usp=drive_link)
 
 ## Features
 
